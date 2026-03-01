@@ -1,0 +1,21 @@
+
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_1/3.png
+
+What is the color of the most expensive item in the \"Cars\" category?
+
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_1/5.png
+What is the price of the most expensive item in the \"Cars\" category?
+
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_1/3.png
+
+What is the color of the least expensive item in the \"Cars\" category?
+
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_1/5.png
+What is the price of the least expensive item in the \"Cars\" category?
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_40/1.png
+Which item costs $100?
