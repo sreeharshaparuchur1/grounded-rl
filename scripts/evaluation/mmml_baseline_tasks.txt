@@ -17,5 +17,25 @@ What is the color of the least expensive item in the \"Cars\" category?
 /ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_1/5.png
 What is the price of the least expensive item in the \"Cars\" category?
 
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_165/0.png
+What is the price of the red mini cooper car in this frame?
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_165/0.png
+How many options are there in the \"Cars\" category between $4000 and $5000?
+
+
 /ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/classifieds_40/1.png
 Which item costs $100?
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/shopping_166/0.png
+How many items on this page can I buy with $23?
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/shopping_166/1.png
+How much do the Adidas Mens Pro Bouncers 2019 shoes cost? 
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/reddit_135/0.png
+How many times is New York mentioned in this page?
+
+/ocean/projects/cis260044p/sparuchu/grounded-rl/data/web_action/images/reddit_135/4.png
+Which year is referenced in the meme with the toad?

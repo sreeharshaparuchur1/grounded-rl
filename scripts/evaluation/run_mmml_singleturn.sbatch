@@ -19,7 +19,7 @@
 #SBATCH --gpus=v100-32:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --time=02:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output=logs/mmml_eval_%j.out
 #SBATCH --error=logs/mmml_eval_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
@@ -55,18 +55,23 @@ REPETITION_PENALTY=1.05
 # Environment / conda activation (before set -e so failures are non-fatal)
 # =============================================================================
 # Source user bashrc to get conda on PATH
-if [ -f "/jet/home/${USER}/.bashrc" ]; then
-    # shellcheck disable=SC1090
-    source "/jet/home/${USER}/.bashrc" 2>/dev/null || true
-fi
+# if [ -f "/jet/home/${USER}/.bashrc" ]; then
+#     # shellcheck disable=SC1090
+#     source "/jet/home/${USER}/.bashrc" 2>/dev/null || true
+# fi
 
-# Activate conda environment; warn but do not abort if it fails
-if command -v conda &>/dev/null; then
-    conda activate "${CONDA_ENV}" 2>/dev/null \
-        || echo "[WARN] Could not activate conda env '${CONDA_ENV}' — using current Python"
-else
-    echo "[INFO] conda not on PATH — relying on module-loaded Python"
-fi
+# # Activate conda environment; warn but do not abort if it fails
+# if command -v conda &>/dev/null; then
+#     conda activate "${CONDA_ENV}" 2>/dev/null \
+#         || echo "[WARN] Could not activate conda env '${CONDA_ENV}' — using current Python"
+# else
+#     echo "[INFO] conda not on PATH — relying on module-loaded Python"
+# fi
+# Example for other users to access the shared conda
+export PATH="/ocean/projects/cis260044p/shared/miniconda3/bin:$PATH"
+. /ocean/projects/cis260044p/shared/miniconda3/etc/profile.d/conda.sh
+
+conda activate ${CONDA_ENV}
 
 # PSC modules
 module load cuda/12.6.1
@@ -150,6 +155,7 @@ python scripts/evaluation/eval_mmml_singleturn.py \
     --device             cuda
 EXIT_CODE=$?
 set -e
+
 
 # =============================================================================
 # Step 3: Print final summary from results JSON

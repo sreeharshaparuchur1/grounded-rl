@@ -2,8 +2,10 @@
 *.pyc
 __pycache__/
 
+logs_mini_data/
+logs/
 # Logs and outputs
-*.txt
+# *.txt
 *.log
 *.out
 

@@ -52,17 +52,10 @@ REPETITION_PENALTY=1.05
 # =============================================================================
 # Environment / conda activation (before set -e)
 # =============================================================================
-if [ -f "/jet/home/${USER}/.bashrc" ]; then
-    # shellcheck disable=SC1090
-    source "/jet/home/${USER}/.bashrc" 2>/dev/null || true
-fi
+export PATH="/ocean/projects/cis260044p/shared/miniconda3/bin:$PATH"
+. /ocean/projects/cis260044p/shared/miniconda3/etc/profile.d/conda.sh
 
-if command -v conda &>/dev/null; then
-    conda activate "${CONDA_ENV}" 2>/dev/null \
-        || echo "[WARN] Could not activate conda env '${CONDA_ENV}' — using current Python"
-else
-    echo "[INFO] conda not on PATH — relying on module-loaded Python"
-fi
+conda activate ${CONDA_ENV}
 
 # PSC modules
 module load cuda/12.6.1
