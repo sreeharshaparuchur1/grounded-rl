@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 """
-eval_mmml_singleturn.py
-Batch single-turn evaluation of ViGoRL/Qwen-VL on tasks from a JSON file.
+eval_mmml_singleturn_base.py
+Batch single-turn evaluation using the base Qwen2.5-VL-3B-Instruct model
+(no ViGoRL weights) on tasks from a JSON file.
 
-Reads a JSON array produced by parse_mmml_tasks.py:
-    [{"image": "/path/to/img.png", "prompt": "Question?"}, ...]
-
-For each task:
-  - Runs the model (single turn)
-  - Parses <think>...</think> for reasoning
-  - Parses <answer>...</answer> for the final answer
-  - Logs success/failure and saves a detailed JSON results file
+Unlike the ViGoRL eval, the base model does not produce <think>/<answer> tags,
+so success is defined as a non-empty response. <think>/<answer> are still parsed
+and logged in case they appear.
 
 Usage
 -----
-python scripts/evaluation/eval_mmml_singleturn.py \
-    --model gsarch/ViGoRL-3b-Web-Grounding \
+python scripts/evaluation/eval_mmml_singleturn_base.py \
+    --model Qwen/Qwen2.5-VL-3B-Instruct \
     --tasks  scripts/evaluation/mmml_baseline_tasks.json \
-    --output logs/mmml_results.json
+    --output logs/mmml_base_results.json
 """
 from __future__ import annotations
 
@@ -35,7 +31,7 @@ from qwen_vl_utils import process_vision_info
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
 # --------------------------------------------------------------------------- #
-# Logging setup
+# Logging
 # --------------------------------------------------------------------------- #
 logging.basicConfig(
     level=logging.INFO,
@@ -45,10 +41,9 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
-ANSWER_RE = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
-
 DIVIDER = "=" * 80
+THINK_RE  = re.compile(r"<think>(.*?)</think>",   re.DOTALL)
+ANSWER_RE = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
 
 
 def extract_thinking(text: str) -> Optional[str]:
@@ -66,11 +61,11 @@ def extract_answer(text: str) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Batch single-turn ViGoRL/Qwen-VL eval on MMML tasks"
+        description="Batch single-turn base Qwen2.5-VL-3B eval on MMML tasks"
     )
     parser.add_argument(
         "--model",
-        default="gsarch/ViGoRL-3b-Web-Grounding",
+        default="Qwen/Qwen2.5-VL-3B-Instruct",
         help="HF model ID or local checkpoint path",
     )
     parser.add_argument(
@@ -80,29 +75,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="logs/mmml_results.json",
+        default="logs/mmml_base_results.json",
         help="Where to write the detailed per-task results JSON",
     )
     parser.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
-    parser.add_argument("--max_new_tokens", type=int, default=1024)
-    parser.add_argument("--temperature", type=float, default=0.5)
+    parser.add_argument("--max_new_tokens",     type=int,   default=1024)
+    parser.add_argument("--temperature",        type=float, default=0.5)
     parser.add_argument("--repetition_penalty", type=float, default=1.05)
-    parser.add_argument(
-        "--task_start",
-        type=int,
-        default=0,
-        help="Index of first task to run (for partial reruns)",
-    )
-    parser.add_argument(
-        "--task_end",
-        type=int,
-        default=None,
-        help="Exclusive end index (default: all tasks)",
-    )
+    parser.add_argument("--task_start", type=int, default=0)
+    parser.add_argument("--task_end",   type=int, default=None)
     args = parser.parse_args()
 
     # ----------------------------------------------------------------------- #
-    # 1. Load tasks
+    # Load tasks
     # ----------------------------------------------------------------------- #
     tasks_path = Path(args.tasks)
     if not tasks_path.exists():
@@ -111,15 +96,11 @@ def main() -> None:
 
     tasks: list[dict] = json.loads(tasks_path.read_text())
     subset = tasks[args.task_start : args.task_end]
-    log.info(
-        "Loaded %d tasks from %s (running %d)",
-        len(tasks),
-        tasks_path,
-        len(subset),
-    )
+    log.info("Loaded %d tasks (running %d)", len(tasks), len(subset))
 
     # ----------------------------------------------------------------------- #
-    # 2. Load model + processor (once, shared across all tasks)
+    # Load model + processor
+    # sdpa attention: works without flash-attention being compiled
     # ----------------------------------------------------------------------- #
     log.info("Loading model: %s", args.model)
     t0 = time.time()
@@ -127,7 +108,7 @@ def main() -> None:
         args.model,
         torch_dtype=torch.float16,
         device_map="auto",
-        attn_implementation="sdpa",
+        attn_implementation="sdpa",   # no flash-attn required
     )
     processor = AutoProcessor.from_pretrained(
         args.model, max_pixels=12960000, min_pixels=3136
@@ -135,15 +116,13 @@ def main() -> None:
     log.info("Model loaded in %.1fs", time.time() - t0)
 
     # ----------------------------------------------------------------------- #
-    # 3. Run evaluation
+    # Run evaluation
     # ----------------------------------------------------------------------- #
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     results: list[dict] = []
-    n_success = 0
-    n_has_thinking = 0
-    n_has_answer = 0
+    n_success = n_has_thinking = n_has_answer = 0
 
     for local_idx, task in enumerate(subset):
         global_idx = args.task_start + local_idx
@@ -155,37 +134,35 @@ def main() -> None:
         log.info("  IMAGE : %s", image_path)
         log.info("  PROMPT: %s", prompt)
 
-        # --- Check image exists ---
+        # --- Image existence check ---
         if not Path(image_path).exists():
             log.warning("  [SKIP] Image not found: %s", image_path)
-            results.append(
-                {
-                    "task_id": global_idx,
-                    "image": image_path,
-                    "prompt": prompt,
-                    "raw_output": None,
-                    "thinking": None,
-                    "answer": None,
-                    "has_thinking": False,
-                    "has_answer": False,
-                    "success": False,
-                    "error": "image_not_found",
-                }
-            )
+            results.append({
+                "task_id": global_idx,
+                "image": image_path,
+                "prompt": prompt,
+                "raw_output": None,
+                "thinking": None,
+                "answer": None,
+                "has_thinking": False,
+                "has_answer": False,
+                "success": False,
+                "error": "image_not_found",
+                "generation_time_s": 0.0,
+            })
             continue
 
-        # --- Build single-turn message ---
+        # --- Build single-turn message (same as demo_singleturn.py) ---
         messages = [
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image_path},
-                    {"type": "text", "text": prompt},
+                    {"type": "text",  "text": prompt},
                 ],
             }
         ]
 
-        # --- Tokenise ---
         text_prompt = processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
@@ -210,69 +187,57 @@ def main() -> None:
             )
         elapsed = time.time() - t_gen
 
-        gen_trim = gen_ids[:, inputs.input_ids.shape[1] :]
-        raw_outputs = processor.batch_decode(
-            gen_trim,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=False,
-        )
-        raw_output = raw_outputs[0]
+        gen_trim = gen_ids[:, inputs.input_ids.shape[1]:]
+        raw_output = processor.batch_decode(
+            gen_trim, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0]
 
-        # --- Parse reasoning + answer ---
+        # --- Parse structured tags if present ---
         thinking = extract_thinking(raw_output)
-        answer = extract_answer(raw_output)
+        answer   = extract_answer(raw_output)
         has_thinking = thinking is not None
-        has_answer = answer is not None
-        # A response is "successful" when the model produces a final answer
-        success = has_answer
+        has_answer   = answer is not None
 
-        if has_thinking:
-            n_has_thinking += 1
-        if has_answer:
-            n_has_answer += 1
-        if success:
-            n_success += 1
+        # Base model success = non-empty output
+        success = bool(raw_output.strip())
 
-        # --- Console logging ---
+        if has_thinking: n_has_thinking += 1
+        if has_answer:   n_has_answer += 1
+        if success:      n_success += 1
+
+        # --- Console output — always print raw response for base model ---
         print(DIVIDER)
-        print(f"TASK {global_idx} RESULT")
+        print(f"TASK {global_idx} RESULT  [{elapsed:.1f}s]")
         print(DIVIDER)
         if has_thinking:
             print("[REASONING]")
             print(thinking)
             print()
-        else:
-            print("[REASONING] <none — model did not produce <think> tags>")
-            print()
         if has_answer:
-            print("[ANSWER]")
+            print("[ANSWER TAG]")
             print(answer)
-        else:
-            print("[ANSWER] <none — model did not produce <answer> tags>")
-        print(f"\n[SUCCESS: {success}]  (generated in {elapsed:.1f}s)")
-        print()
-        if not has_answer:
-            print("[RAW OUTPUT]")
-            print(raw_output)
+            print()
+        print("[RAW OUTPUT]")
+        print(raw_output)
+        print(f"\n[SUCCESS: {success}]")
         print(DIVIDER)
 
-        results.append(
-            {
-                "task_id": global_idx,
-                "image": image_path,
-                "prompt": prompt,
-                "raw_output": raw_output,
-                "thinking": thinking,
-                "answer": answer,
-                "has_thinking": has_thinking,
-                "has_answer": has_answer,
-                "success": 'Nyet',
-                "generation_time_s": round(elapsed, 2),
-            }
-        )
+        results.append({
+            "task_id": global_idx,
+            "image": image_path,
+            "prompt": prompt,
+            "raw_output": raw_output,
+            "thinking": thinking,
+            "answer": answer,
+            "has_thinking": has_thinking,
+            "has_answer": has_answer,
+            "success": success,
+            "error": None,
+            "generation_time_s": round(elapsed, 2),
+        })
 
     # ----------------------------------------------------------------------- #
-    # 4. Summary
+    # Summary
     # ----------------------------------------------------------------------- #
     total = len(subset)
     summary = {
@@ -280,25 +245,28 @@ def main() -> None:
         "tasks_file": str(tasks_path),
         "total_tasks": total,
         "successful": n_success,
-        "success_rate": round(n_success / total, 4) if total > 0 else 0.0,
-        "with_thinking": n_has_thinking,
-        "thinking_rate": round(n_has_thinking / total, 4) if total > 0 else 0.0,
-        "with_answer": n_has_answer,
-        "answer_rate": round(n_has_answer / total, 4) if total > 0 else 0.0,
+        "success_rate": round(n_success / total, 4) if total else 0.0,
+        "with_thinking_tags": n_has_thinking,
+        "with_answer_tags": n_has_answer,
     }
 
     print(DIVIDER)
     print("EVALUATION SUMMARY")
     print(DIVIDER)
     for k, v in summary.items():
-        print(f"  {k:<20}: {v}")
+        print(f"  {k:<24}: {v}")
+    print()
+    print("  Per-task results:")
+    for r in results:
+        status  = "OK " if r["success"] else "---"
+        raw_preview = (r["raw_output"] or "(none)")[:70].replace("\n", " ")
+        t_sec = r.get("generation_time_s", "?")
+        print(f"  [{status}] task {r['task_id']:>2} | {raw_preview}  [{t_sec}s]")
     print(DIVIDER)
 
-    output = {"summary": summary, "results": results}
-    out_path.write_text(json.dumps(output, indent=2))
+    out_path.write_text(json.dumps({"summary": summary, "results": results}, indent=2))
     log.info("Results written to %s", out_path)
 
 
-# --------------------------------------------------------------------------- #
 if __name__ == "__main__":
     main()
