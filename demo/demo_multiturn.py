@@ -82,9 +82,9 @@ def main():
     print("Loading checkpoint…")
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         args.model,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
         device_map="auto",
-        attn_implementation="flash_attention_2",
+        attn_implementation="sdpa",
     )
     processor = AutoProcessor.from_pretrained(args.model,
                                               max_pixels=12960000,

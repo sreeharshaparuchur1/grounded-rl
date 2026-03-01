@@ -33,8 +33,8 @@ print(f"✅ DATA_ROOT is set to: {DATA_ROOT}")
 # 2️⃣ Specify which datasets to download
 # -----------------------------------------------------------------------------
 datasets = [
-    "spatial_reasoning",
-    "visual_search",
+    #"spatial_reasoning",
+    #"visual_search",
     "web_action",
     "web_grounding",
     # "MCTS_VSTAR_20250514_134727_images_1", # download if need visual search sft data (large ~50GB)
